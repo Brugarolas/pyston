@@ -2104,16 +2104,16 @@ static void emit_exit_yielding_label(Jit* Dst) {
 }
 
 static _PyOpcache* get_opcache_entry(OpCache* opcache, int inst_idx) {
-    _PyOpcache* co_opcache = NULL;
+    _PyOpcache* opcache_entry = NULL;
     if (opcache->oc_opcache != NULL) {
         unsigned char co_opt_offset = opcache->oc_opcache_map[inst_idx + 1];
         if (co_opt_offset > 0) {
             JIT_ASSERT(co_opt_offset <= opcache->oc_opcache_size, "");
-            co_opcache = &opcache->oc_opcache[co_opt_offset - 1];
-            JIT_ASSERT(co_opcache != NULL, "");
+            opcache_entry = &opcache->oc_opcache[co_opt_offset - 1];
+            JIT_ASSERT(opcache_entry != NULL, "");
         }
     }
-    return co_opcache;
+    return opcache_entry;
 }
 
 // returns 0 if generation succeeded
@@ -2128,8 +2128,8 @@ static int emit_special_binary_subscr(Jit* Dst, int inst_idx, PyObject* const_va
         return -1;
     }
 
-    _PyOpcache* co_opcache = get_opcache_entry(Dst->opcache, inst_idx);
-    PyTypeObject* cached_type = co_opcache ? co_opcache->u.t.type : NULL;
+    _PyOpcache* opcache_entry = get_opcache_entry(Dst->opcache, inst_idx);
+    PyTypeObject* cached_type = opcache_entry ? opcache_entry->u.t.type : NULL;
 
     int use_cold_section = 0;
     // special path: if we have a >= 0 index and during profiling encountered tuple or lists
@@ -2190,8 +2190,8 @@ static int emit_special_store_subscr(Jit* Dst, int inst_idx, int opcode, int opa
         return -1;
     }
 
-    _PyOpcache* co_opcache = get_opcache_entry(Dst->opcache, inst_idx);
-    PyTypeObject* cached_type = co_opcache ? co_opcache->u.t.type : NULL;
+    _PyOpcache* opcache_entry = get_opcache_entry(Dst->opcache, inst_idx);
+    PyTypeObject* cached_type = opcache_entry ? opcache_entry->u.t.type : NULL;
     if (cached_type != &PyList_Type) {
         return -1;
     }
@@ -2267,8 +2267,8 @@ static int emit_inline_cache_loadattr_is_version_zero(_PyOpcache_LoadAttr *la) {
 }
 
 // returns 1 if IC generation is possible
-static int emit_inline_cache_loadattr_supported(_PyOpcache *co_opcache, _PyOpcache_LoadAttr *la) {
-    if (!co_opcache->optimized)
+static int emit_inline_cache_loadattr_supported(_PyOpcache *opcache_entry, _PyOpcache_LoadAttr *la) {
+    if (!opcache_entry->optimized)
         return 0;
 
     int version_zero = emit_inline_cache_loadattr_is_version_zero(la);
@@ -2286,9 +2286,9 @@ static int emit_inline_cache_loadattr_supported(_PyOpcache *co_opcache, _PyOpcac
 
     if (la->cache_type == LA_CACHE_POLYMORPHIC) {
         for (int i=0, num=la->u.poly_cache.num_used; i<num; ++i) {
-            _PyOpcache *co_opcache_entry = &la->u.poly_cache.caches[i];
-            _PyOpcache_LoadAttr *la_entry = &co_opcache_entry->u.la;
-            if (co_opcache_entry->num_failed == 0 && emit_inline_cache_loadattr_supported(co_opcache_entry, la_entry)) {
+            _PyOpcache *opcache_entry_entry = &la->u.poly_cache.caches[i];
+            _PyOpcache_LoadAttr *la_entry = &opcache_entry_entry->u.la;
+            if (opcache_entry_entry->num_failed == 0 && emit_inline_cache_loadattr_supported(opcache_entry_entry, la_entry)) {
                 return 1;
             }
         }
@@ -2457,11 +2457,11 @@ static int emit_special_binary_op_refcnt1(Jit* Dst, int inst_idx, int opcode, in
         default:
             return -1;
     }
-    _PyOpcache* co_opcache = get_opcache_entry(Dst->opcache, inst_idx);
-    if (!co_opcache || !co_opcache->optimized) {
+    _PyOpcache* opcache_entry = get_opcache_entry(Dst->opcache, inst_idx);
+    if (!opcache_entry || !opcache_entry->optimized) {
         return -1;
     }
-    _PyOpcache_TypeRefcnt* cache = &co_opcache->u.t_refcnt;
+    _PyOpcache_TypeRefcnt* cache = &opcache_entry->u.t_refcnt;
     if (!cache->refcnt1_left && !cache->refcnt1_right) {
         return -1;
     }
@@ -2474,7 +2474,7 @@ static int emit_special_binary_op_refcnt1(Jit* Dst, int inst_idx, int opcode, in
         return -1;
     // some simple heuristics: if it looks like the refcnt is only 1 in less than half the cases
     // don't inline it
-    if ((use_left ? cache->refcnt1_left : cache->refcnt1_right) < co_opcache->optimized/2)
+    if ((use_left ? cache->refcnt1_left : cache->refcnt1_right) < opcache_entry->optimized/2)
         return -1;
     int inplace_reg = arg1_idx;
     int other_reg = arg2_idx;
@@ -2542,25 +2542,25 @@ static int emit_special_binary_op_refcnt1(Jit* Dst, int inst_idx, int opcode, in
 }
 
 // returns 0 if IC generation succeeded
-static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* co_opcache) {
-    if (co_opcache == NULL || !jit_use_ics)
+static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* opcache_entry) {
+    if (opcache_entry == NULL || !jit_use_ics)
         return 1;
 
     // do we have a valid cache entry?
-    if (!co_opcache->optimized)
+    if (!opcache_entry->optimized)
         return 1;
 
     if (opcode == LOAD_GLOBAL)  {
         ++jit_stat_load_global_total;
-        // The co_opcache->num_failed==0 check is to try to avoid writing out inline
+        // The opcache_entry->num_failed==0 check is to try to avoid writing out inline
         // caches that might end up missing, since we currently don't rewrite them.
         // It looks like the check is largely useless on our benchmarks, and doesn't
         // meaningfully cut down on the (extremely small) number of cache misses.
         // I think it's still worth leaving it in to reduce potential downside in bad cases,
         // as it definitely helps with the other opcodes.
         // globals_ver != 0 makes sure we don't write out an always-failing inline cache
-        if (co_opcache->num_failed == 0 && co_opcache->u.lg.globals_ver != 0) {
-            _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
+        if (opcache_entry->num_failed == 0 && opcache_entry->u.lg.globals_ver != 0) {
+            _PyOpcache_LoadGlobal *lg = &opcache_entry->u.lg;
 
             ++jit_stat_load_global_inline;
 
@@ -2590,8 +2590,8 @@ static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* co_opc
                 emit_inc_qword_ptr(Dst, &jit_stat_load_global_miss, 1 /*=can use tmp_reg*/);
             }
             emit_mov_imm2(Dst, arg1_idx, PyTuple_GET_ITEM(Dst->co_names, oparg),
-                                arg2_idx, co_opcache);
-            emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, co_opcache != 0 /*= use op cache */));
+                                arg2_idx, opcache_entry);
+            emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, opcache_entry != 0 /*= use op cache */));
             emit_if_res_0_error(Dst);
             | branch <4 // jump to the common code which pushes the result
             // Switch back to the normal section
@@ -2606,8 +2606,8 @@ static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* co_opc
         else
             ++jit_stat_load_method_total;
 
-        _PyOpcache_LoadAttr *la = &co_opcache->u.la;
-        if (co_opcache->num_failed == 0 && emit_inline_cache_loadattr_supported(co_opcache, la)) {
+        _PyOpcache_LoadAttr *la = &opcache_entry->u.la;
+        if (opcache_entry->num_failed == 0 && emit_inline_cache_loadattr_supported(opcache_entry, la)) {
             if (opcode == LOAD_ATTR)
                 ++jit_stat_load_attr_inline;
             else
@@ -2656,12 +2656,12 @@ static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* co_opc
                 }
                 int first = 1;
                 for (int i=0, num=la->u.poly_cache.num_used; i<num; ++i) {
-                    _PyOpcache *co_opcache_entry = &la->u.poly_cache.caches[i];
-                    _PyOpcache_LoadAttr *la_entry = &co_opcache_entry->u.la;
-                    if (co_opcache_entry->num_failed != 0) {
+                    _PyOpcache *opcache_entry_entry = &la->u.poly_cache.caches[i];
+                    _PyOpcache_LoadAttr *la_entry = &opcache_entry_entry->u.la;
+                    if (opcache_entry_entry->num_failed != 0) {
                         continue;
                     }
-                    if (!emit_inline_cache_loadattr_supported(co_opcache_entry, la_entry)) {
+                    if (!emit_inline_cache_loadattr_supported(opcache_entry_entry, la_entry)) {
                         continue;
                     }
                     if (first) {
@@ -2734,12 +2734,12 @@ static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* co_opc
                     // helper function needs a owned value
                     emit_make_owned(Dst, arg2_idx, ref_status);
                     emit_mov_imm2(Dst, arg1_idx, PyTuple_GET_ITEM(Dst->co_names, oparg),
-                                        arg3_idx, co_opcache);
+                                        arg3_idx, opcache_entry);
                 } else {
                     emit_mov_imm2(Dst, arg1_idx, PyTuple_GET_ITEM(Dst->co_names, oparg),
-                                        arg2_idx, co_opcache);
+                                        arg2_idx, opcache_entry);
                 }
-                emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, co_opcache != 0 /*= use op cache */));
+                emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, opcache_entry != 0 /*= use op cache */));
                 emit_if_res_0_error(Dst);
                 | branch <5 // jump to the common code which pushes the result
 
@@ -2767,8 +2767,8 @@ static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* co_opc
         }
     } else if (opcode == STORE_ATTR) {
         ++jit_stat_store_attr_total;
-        _PyOpcache_StoreAttr *sa = &co_opcache->u.sa;
-        if (co_opcache->num_failed == 0 && sa->type_ver != 0 && co_opcache->optimized) {
+        _PyOpcache_StoreAttr *sa = &opcache_entry->u.sa;
+        if (opcache_entry->num_failed == 0 && sa->type_ver != 0 && opcache_entry->optimized) {
 #ifndef PYSTON_LITE
             if ((sa->cache_type == SA_CACHE_IDX_SPLIT_DICT || sa->cache_type == SA_CACHE_IDX_SPLIT_DICT_INIT)
                 && sa->type_tp_dictoffset <= 0) {
@@ -2862,9 +2862,9 @@ static int emit_inline_cache(Jit* Dst, int opcode, int oparg, _PyOpcache* co_opc
                 emit_make_owned(Dst, arg2_idx, ref_status[0]);
                 emit_make_owned(Dst, arg3_idx, ref_status[1]);
                 emit_mov_imm2(Dst, arg1_idx, PyTuple_GET_ITEM(Dst->co_names, oparg),
-                                arg4_idx, co_opcache);
+                                arg4_idx, opcache_entry);
 
-                emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, co_opcache != 0 /*= use op cache */));
+                emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, opcache_entry != 0 /*= use op cache */));
                 emit_if_res_0_error(Dst);
                 | branch <5 // jump to the common code which pushes the result
                 switch_section(Dst, SECTION_CODE);
@@ -3359,10 +3359,10 @@ void* jit_func(PyCodeObject* co, PyThreadState* tstate) {
             if ((opcode == INPLACE_ADD || opcode == BINARY_ADD) &&
                 Dst->deferred_vs_next >= 2 && GET_DEFERRED[-2].loc == FAST &&
                 inst_idx + 1 < Dst->num_opcodes) {
-                _PyOpcache* co_opcache = get_opcache_entry(opcache, inst_idx);
+                _PyOpcache* opcache_entry = get_opcache_entry(opcache, inst_idx);
                 _Py_CODEUNIT next_word = Dst->first_instr[inst_idx + 1];
                 // interpreter sets this to 1 if both operands have been unicode strings
-                int both_are_unicode = co_opcache && co_opcache->optimized && co_opcache->u.t_refcnt.type == &PyUnicode_Type;
+                int both_are_unicode = opcache_entry && opcache_entry->optimized && opcache_entry->u.t_refcnt.type == &PyUnicode_Type;
                 int next_opcode = _Py_OPCODE(next_word);
                 int next_oparg = _Py_OPARG(next_word);
                 if (both_are_unicode &&
@@ -4020,7 +4020,7 @@ void* jit_func(PyCodeObject* co, PyThreadState* tstate) {
             // compiler complains if the first line after a label is a declaration and not a statement:
             (void)0;
 
-            _PyOpcache* co_opcache = get_opcache_entry(opcache, inst_idx);
+            _PyOpcache* opcache_entry = get_opcache_entry(opcache, inst_idx);
 
             if (opcode == LOAD_METHOD) {
                 CallMethodHint* hint = (CallMethodHint*)calloc(1, sizeof(CallMethodHint));
@@ -4029,7 +4029,7 @@ void* jit_func(PyCodeObject* co, PyThreadState* tstate) {
             }
 
             // try emitting a IC for the operation if possible
-            if (emit_inline_cache(Dst, opcode, oparg, co_opcache) == 0)
+            if (emit_inline_cache(Dst, opcode, oparg, opcache_entry) == 0)
                 continue;
 
             // this opcode is implemented via the helpers in aot_ceval_jit_helper.c
@@ -4159,18 +4159,18 @@ void* jit_func(PyCodeObject* co, PyThreadState* tstate) {
                     // Often the name and opcache pointers are close to each other,
                     // so instead of doing two 64-bit moves, we can do the second
                     // one as a lea off the first one and save a few bytes
-                    emit_mov_imm_using_diff(Dst, arg2_idx, arg1_idx, co_opcache, PyTuple_GET_ITEM(Dst->co_names, oparg));
-                    emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, co_opcache != 0 /*= use op cache */));
+                    emit_mov_imm_using_diff(Dst, arg2_idx, arg1_idx, opcache_entry, PyTuple_GET_ITEM(Dst->co_names, oparg));
+                    emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, opcache_entry != 0 /*= use op cache */));
                     break;
 
                 case LOAD_ATTR:
-                    emit_mov_imm_using_diff(Dst, arg3_idx, arg1_idx, co_opcache, PyTuple_GET_ITEM(Dst->co_names, oparg));
-                    emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, co_opcache != 0 /*= use op cache */));
+                    emit_mov_imm_using_diff(Dst, arg3_idx, arg1_idx, opcache_entry, PyTuple_GET_ITEM(Dst->co_names, oparg));
+                    emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, opcache_entry != 0 /*= use op cache */));
                     break;
 
                 case STORE_ATTR:
-                    emit_mov_imm_using_diff(Dst, arg4_idx, arg1_idx, co_opcache, PyTuple_GET_ITEM(Dst->co_names, oparg));
-                    emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, co_opcache != 0 /*= use op cache */));
+                    emit_mov_imm_using_diff(Dst, arg4_idx, arg1_idx, opcache_entry, PyTuple_GET_ITEM(Dst->co_names, oparg));
+                    emit_call_ext_func(Dst, get_aot_func_addr(Dst, opcode, oparg, opcache_entry != 0 /*= use op cache */));
                     break;
 
 

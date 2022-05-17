@@ -188,10 +188,10 @@ PyObject* cmp_outcomePyCmp_EXC_MATCH(PyObject *v, PyObject *w) {
   return cmp_outcome(tstate, PyCmp_EXC_MATCH, v, w);
 }
 
-int storeAttrCache(PyObject* owner, PyObject* name, PyObject* v, _PyOpcache *co_opcache, int* err);
-int setupStoreAttrCache(PyObject* owner, PyObject* name, _PyOpcache *co_opcache);
-int loadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *co_opcache, PyObject** res, int *meth_found);
-int setupLoadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *co_opcache, PyObject* res, int is_load_method, int inside_interpreter);
+int storeAttrCache(PyObject* owner, PyObject* name, PyObject* v, _PyOpcache *opcache_entry, int* err);
+int setupStoreAttrCache(PyObject* owner, PyObject* name, _PyOpcache *opcache_entry);
+int loadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *opcache_entry, PyObject** res, int *meth_found);
+int setupLoadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *opcache_entry, PyObject* res, int is_load_method, int inside_interpreter);
 
 
 JIT_HELPER1(PRINT_EXPR, value) {
@@ -637,12 +637,12 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT2(STORE_ATTR_CACHED, owner, v) {
     int err;
     //OPCACHE_FETCH();
     if (likely(v)) {
-        if (likely(storeAttrCache(owner, name, v, co_opcache, &err) == 0)) {
+        if (likely(storeAttrCache(owner, name, v, opcache_entry, &err) == 0)) {
             //STACK_SHRINK(2);
             goto sa_common;
         }
 
-        if (++co_opcache->num_failed >= 3) {
+        if (++opcache_entry->num_failed >= 3) {
             // don't use the cache anymore
             SET_JIT_AOT_FUNC(JIT_HELPER_STORE_ATTR);
         }
@@ -655,7 +655,7 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT2(STORE_ATTR_CACHED, owner, v) {
 #endif
 
     if (err == 0) {
-        if (setupStoreAttrCache(owner, name, co_opcache)) {
+        if (setupStoreAttrCache(owner, name, opcache_entry)) {
             // don't use the cache anymore
             SET_JIT_AOT_FUNC(JIT_HELPER_STORE_ATTR);
         }
@@ -755,8 +755,8 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT(LOAD_GLOBAL) {
     //PyObject *name;
     PyObject *v;
     OPCACHE_CHECK();
-    if (co_opcache != NULL && co_opcache->optimized > 0) {
-        _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
+    if (opcache_entry != NULL && opcache_entry->optimized > 0) {
+        _PyOpcache_LoadGlobal *lg = &opcache_entry->u.lg;
 
         if (lg->globals_ver ==
                 ((PyDictObject *)f->f_globals)->ma_version_tag
@@ -791,17 +791,17 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT(LOAD_GLOBAL) {
         goto_error;
     }
 
-    if (co_opcache != NULL) {
-        _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
+    if (opcache_entry != NULL) {
+        _PyOpcache_LoadGlobal *lg = &opcache_entry->u.lg;
 
-        if (co_opcache->optimized == 0) {
+        if (opcache_entry->optimized == 0) {
             /* Wasn't optimized before. */
             OPCACHE_STAT_GLOBAL_OPT();
         } else {
             OPCACHE_STAT_GLOBAL_MISS();
         }
 
-        co_opcache->optimized = 1;
+        opcache_entry->optimized = 1;
         lg->globals_ver =
             ((PyDictObject *)f->f_globals)->ma_version_tag;
         lg->builtins_ver =
@@ -1238,11 +1238,11 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT1(LOAD_ATTR_CACHED, owner) {
 
     //OPCACHE_FETCH();
 
-    if (likely(loadAttrCache(owner, name, co_opcache, &res, 0) == 0)) {
+    if (likely(loadAttrCache(owner, name, opcache_entry, &res, 0) == 0)) {
         goto la_common;
     }
 
-    if (++co_opcache->num_failed >= 5) {
+    if (++opcache_entry->num_failed >= 5) {
         // don't use the cache anymore
         SET_JIT_AOT_FUNC(JIT_HELPER_LOAD_ATTR);
     }
@@ -1254,7 +1254,7 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT1(LOAD_ATTR_CACHED, owner) {
 #endif
 
     if (res) {
-        if (setupLoadAttrCache(owner, name, co_opcache, res, 0/*= not LOAD_METHOD*/, 0 /*not inside_interpreter */)) {
+        if (setupLoadAttrCache(owner, name, opcache_entry, res, 0/*= not LOAD_METHOD*/, 0 /*not inside_interpreter */)) {
             // don't use the cache anymore
             SET_JIT_AOT_FUNC(JIT_HELPER_LOAD_ATTR);
         }
@@ -1549,7 +1549,7 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT(LOAD_METHOD_CACHED) {
     //OPCACHE_FETCH();
 
     int is_method;
-    if (likely(loadAttrCache(obj, name, co_opcache, &meth, &is_method) == 0)) {
+    if (likely(loadAttrCache(obj, name, opcache_entry, &meth, &is_method) == 0)) {
         if (meth == NULL) {
             goto_error;
         }
@@ -1567,7 +1567,7 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT(LOAD_METHOD_CACHED) {
     meth = NULL;
 
 
-    if (++co_opcache->num_failed >= 5) {
+    if (++opcache_entry->num_failed >= 5) {
         // don't use the cache anymore
         SET_JIT_AOT_FUNC(JIT_HELPER_LOAD_METHOD);
     }
@@ -1575,7 +1575,7 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT(LOAD_METHOD_CACHED) {
     int meth_found = _PyObject_GetMethod(obj, name, &meth);
 
 #if OPCACHE_STATS
-    if (co_opcache)
+    if (opcache_entry)
         loadmethod_misses++;
     else
         loadmethod_noopcache++;
@@ -1586,7 +1586,7 @@ JIT_HELPER_WITH_NAME_OPCACHE_AOT(LOAD_METHOD_CACHED) {
         goto_error;
     }
 
-    if (setupLoadAttrCache(obj, name, co_opcache, meth, 1 /*= LOAD_METHOD*/, 0 /*not inside_interpreter */)) {
+    if (setupLoadAttrCache(obj, name, opcache_entry, meth, 1 /*= LOAD_METHOD*/, 0 /*not inside_interpreter */)) {
         // don't use the cache anymore
         SET_JIT_AOT_FUNC(JIT_HELPER_LOAD_METHOD);
     }
