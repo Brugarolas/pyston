@@ -94,7 +94,7 @@ env/update.stamp: env
 
 ENV:=
 BENCH:=../macrobenchmarks/benchmarks/bm_flaskblogging/run_benchmark.py --legacy
-BENCH:=~/pyston/pyston/macrobenchmarks/git+https:/github.com/ericsnowcurrently/python-performance@benchmark-management/pyperformance/benchmarks/bm_sqlalchemy_imperative.py -w 0 -n 1 -p 1 -l 100 --inherit-environ=PYSTON,JIT_MIN_RUNS,SHOW_JIT_STATS,SHOW_OPCACHE_STATS --worker
+# BENCH:=~/pyston2/pyston/macrobenchmarks/python-performance/pyperformance/benchmarks/bm_sqlalchemy_imperative.py -w 0 -n 1 -p 1 -l 100 --inherit-environ=PYSTON,JIT_MIN_RUNS,SHOW_JIT_STATS,SHOW_OPCACHE_STATS --worker
 
 
 # test_code has a bug when run with another client that calls RequestCodeExtraIndex
