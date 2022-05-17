@@ -5,6 +5,10 @@ PYTHON:=python3.8
 DIR:=python3.8
 PYTHON_INCL:=/usr/include/$(DIR)/
 
+PYTHON:=/home/kmod/cpython_3.8/install/bin/python3
+DIR:=python3.8
+PYTHON_INCL:=/home/kmod/cpython_3.8/install/include/$(DIR)/
+
 
 aot_ceval_jit.prep.c: aot_ceval_jit.c
 	../../pyston/tools/dynasm_preprocess.py $< $@
