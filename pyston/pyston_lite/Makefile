@@ -23,16 +23,17 @@ override CFLAGS += -DPYSTON_LITE
 aot_ceval_jit_helper.o: CFLAGS+=-fno-lto
 
 pgo:
-	$(MAKE) clean
+	$(MAKE) buildclean
 	rm -f *.gcda
 
 	$(MAKE) pyston_lite.so CFLAGS=-fprofile-generate LDFLAGS=-fprofile-generate
 
-	rm -rf env
-	$(MAKE) env
-	./env/bin/python ../../Lib/test/regrtest.py -j 0 -unone,decimal -x test_posix test_asyncio test_cmd_line_script test_compiler test_concurrent_futures test_ctypes test_dbm_dumb test_dbm_ndbm test_distutils test_ensurepip test_ftplib test_gdb test_httplib test_imaplib test_ioctl test_linuxaudiodev test_multiprocessing test_nntplib test_ossaudiodev test_poplib test_pydoc test_signal test_socket test_socketserver test_ssl test_subprocess test_sundry test_thread test_threaded_import test_threadedtempfile test_threading test_threading_local test_threadsignals test_venv test_zipimport_support test_code || true
+	rm -rf pgo_env
+	$(PYTHON) -m venv pgo_env
+	cp pyston_lite.so autoload/pyston_lite_autoload.pth pgo_env/lib/$(DIR)/site-packages/
+	./pgo_env/bin/python ../../Lib/test/regrtest.py -j 0 -unone,decimal -x test_posix test_asyncio test_cmd_line_script test_compiler test_concurrent_futures test_ctypes test_dbm_dumb test_dbm_ndbm test_distutils test_ensurepip test_ftplib test_gdb test_httplib test_imaplib test_ioctl test_linuxaudiodev test_multiprocessing test_nntplib test_ossaudiodev test_poplib test_pydoc test_signal test_socket test_socketserver test_ssl test_subprocess test_sundry test_thread test_threaded_import test_threadedtempfile test_threading test_threading_local test_threadsignals test_venv test_zipimport_support test_code || true
 
-	$(MAKE) clean
+	$(MAKE) buildclean
 	$(MAKE) pyston_lite.so CFLAGS=-fprofile-use LDFLAGS=-fprofile-use
 
 pgo.stamp:
@@ -44,9 +45,12 @@ pyston_lite.so: aot_ceval_jit.gen.o aot_ceval_jit_helper.o lib.o aot_ceval.o
 
 %.o: %.c $(wildcard *.h)
 
-.PHONY: clean
-clean:
+.PHONY: clean buildclean
+buildclean:
 	rm -rf *.o *.so env
+clean:
+	$(MAKE) buildclean
+	rm -f *.gcda pgo.stamp
 
 
 package: package_jit package_autoload
