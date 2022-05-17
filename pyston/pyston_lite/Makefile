@@ -94,6 +94,7 @@ env/update.stamp: env
 
 ENV:=
 BENCH:=../macrobenchmarks/benchmarks/bm_flaskblogging/run_benchmark.py --legacy
+BENCH:=~/pyston/pyston/macrobenchmarks/git+https:/github.com/ericsnowcurrently/python-performance@benchmark-management/pyperformance/benchmarks/bm_sqlalchemy_imperative.py -w 0 -n 1 -p 1 -l 100 --inherit-environ=PYSTON,JIT_MIN_RUNS,SHOW_JIT_STATS,SHOW_OPCACHE_STATS --worker
 
 
 # test_code has a bug when run with another client that calls RequestCodeExtraIndex
@@ -122,7 +123,7 @@ perf_report_baseline:
 	perf report -i perf_baseline.data -n --objdump=../../pyston/tools/perf_jit.py
 
 dbg_bench: env/update.stamp
-	DISABLE_PYSTONFULL=1 $(ENV) gdb --args ./env/bin/python $(BENCH) 1000000
+	DISABLE_PYSTONFULL=1 $(ENV) gdb --args ./env/bin/python $(BENCH)
 
 
 bench_full:
