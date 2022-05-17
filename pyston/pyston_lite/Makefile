@@ -40,7 +40,7 @@ pgo:
 	$(MAKE) buildclean
 	$(MAKE) pyston_lite.so CFLAGS=-fprofile-use LDFLAGS=-fprofile-use
 
-pgo.stamp:
+pgo.stamp: $(wildcard *.c) $(wildcard *.h)
 	$(MAKE) pgo
 	touch $@
 
