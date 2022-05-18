@@ -29,8 +29,8 @@ def parse(fn):
         r[l[-1]] = int(l[1])
     return r
 
-baseline = parse("perf_baseline.data")
-lite = parse("perf_lite.data")
+baseline = parse("/tmp/perf_baseline.data")
+lite = parse("/tmp/perf_lite.data")
 
 baseline_total = sum(baseline.values())
 lite_total = sum(lite.values())

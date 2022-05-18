@@ -105,22 +105,22 @@ testsuite: env
 	./env/bin/python -m test -j0 -x test_code
 
 bench: env/update.stamp
-	$(ENV) ./env/bin/python $(BENCH)
+	$(ENV) flock /tmp ./env/bin/python $(BENCH)
 
 bench_baseline: env/update.stamp
-	DISABLE_PYSTON=1 ./env/bin/python $(BENCH)
+	DISABLE_PYSTON=1 flock /tmp ./env/bin/python $(BENCH)
 
 perf_bench: env/update.stamp
-	$(ENV) JIT_PERF_MAP=1 perf record -o perf_lite.data ./env/bin/python $(BENCH)
+	$(ENV) JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_lite.data ./env/bin/python $(BENCH)
 	$(MAKE) perf_report
 perf_report:
-	perf report -i perf_lite.data -n --objdump=../../pyston/tools/perf_jit.py
+	perf report -i /tmp/perf_lite.data -n --objdump=../../pyston/tools/perf_jit.py
 
 perf_bench_baseline: env/update.stamp
-	DISABLE_PYSTON=1 JIT_PERF_MAP=1 perf record -o perf_baseline.data ./env/bin/python $(BENCH)
+	DISABLE_PYSTON=1 JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_baseline.data ./env/bin/python $(BENCH)
 	$(MAKE) perf_report_baseline
 perf_report_baseline:
-	perf report -i perf_baseline.data -n --objdump=../../pyston/tools/perf_jit.py
+	perf report -i /tmp/perf_baseline.data -n --objdump=../../pyston/tools/perf_jit.py
 
 dbg_bench: env/update.stamp
 	DISABLE_PYSTONFULL=1 $(ENV) gdb --args ./env/bin/python $(BENCH)
@@ -128,14 +128,14 @@ dbg_bench: env/update.stamp
 
 bench_full:
 	$(MAKE) -C ../.. build/unoptshared_env/update.stamp
-	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH ../../build/unoptshared_env/bin/python $(BENCH)
+	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH flock /tmp ../../build/unoptshared_env/bin/python $(BENCH)
 
 perf_bench_full:
 	$(MAKE) -C ../.. build/unoptshared_env/update.stamp
-	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH JIT_PERF_MAP=1 perf record -o perf_full.data ../../build/unoptshared_env/bin/python $(BENCH)
+	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_full.data ../../build/unoptshared_env/bin/python $(BENCH)
 	$(MAKE) perf_report_full
 perf_report_full:
-	perf report -i perf_full.data -n --objdump=../../pyston/tools/perf_jit.py
+	perf report -i /tmp/perf_full.data -n --objdump=../../pyston/tools/perf_jit.py
 
 dbg_bench_full:
 	$(MAKE) -C ../.. build/unoptshared_env/update.stamp
