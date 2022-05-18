@@ -58,7 +58,7 @@ def compare():
 
     diffs = []
     for k in all:
-        diffs.append((-(baseline.setdefault(k, 0) - lite.setdefault(k, 0)), k))
+        diffs.append((abs(baseline.setdefault(k, 0) - lite.setdefault(k, 0)), k))
 
     diffs.sort(reverse=True)
     for t in diffs[:10]:
