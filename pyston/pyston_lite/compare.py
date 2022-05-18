@@ -47,23 +47,26 @@ def compare():
     print("="*40)
 
     for d in (lite, baseline):
-        for k, v in list(d.items()):
-            if "EvalFrame" in k:
-                d["_EvalFrame"] += d.pop(k)
+        # for k, v in list(d.items()):
+            # if "EvalFrame" in k:
+                # d["_EvalFrame"] += d.pop(k)
+        d["call_function"] += d.pop("call_function_ceval_fast", 0)
+        d["_PyEval_EvalFrameDefault"] += d.pop("_PyEval_EvalFrame_AOT_Interpreter", 0)
 
     all = set(baseline)
     all.update(lite)
 
     diffs = []
     for k in all:
-        diffs.append((abs(baseline.setdefault(k, 0) - lite.setdefault(k, 0)), k))
+        diffs.append((-(baseline.setdefault(k, 0) - lite.setdefault(k, 0)), k))
 
     diffs.sort(reverse=True)
     for t in diffs[:10]:
         k = t[-1]
         f = baseline[k]
         l = lite[k]
-        print("%4.1f%%\t% 4.1f%%\t" % (100.0 * f / baseline_total, 100.0 * l / lite_total), "%+.2f%%" % ((l - f) / baseline_total * 100.0), k)
+        # print("%4.1f%%\t% 4.1f%%\t" % (100.0 * f / baseline_total, 100.0 * l / lite_total), "%+.2f%%" % ((l - f) / baseline_total * 100.0), k)
+        print("%d\t%d\t" % (f * 1e-6, l * 1e-6), "%+.2f%%" % ((l - f) / baseline_total * 100.0), k)
 
 def showPercents():
     baseline = parse("/tmp/perf_baseline.data")
