@@ -5,9 +5,10 @@ PYTHON:=python3.8
 DIR:=python3.8
 PYTHON_INCL:=/usr/include/$(DIR)/
 
-PYTHON:=/home/kmod/cpython_3.8/install/bin/python3
+PYTHON:=/home/kmod/cpython_3.8unoptshared/install/bin/python3
 DIR:=python3.8
-PYTHON_INCL:=/home/kmod/cpython_3.8/install/include/$(DIR)/
+PYTHON_INCL:=/home/kmod/cpython_3.8unoptshared/install/include/$(DIR)/
+PYTHON_LIBDIR:=/home/kmod/cpython_3.8unoptshared/install/lib/
 
 
 aot_ceval_jit.prep.c: aot_ceval_jit.c
@@ -105,25 +106,25 @@ testsuite: env
 	./env/bin/python -m test -j0 -x test_code
 
 bench: env/update.stamp
-	$(ENV) flock /tmp ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) $(ENV) flock /tmp ./env/bin/python $(BENCH)
 
 bench_baseline: env/update.stamp
-	DISABLE_PYSTON=1 flock /tmp ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) DISABLE_PYSTON=1 flock /tmp ./env/bin/python $(BENCH)
 
 perf_bench: env/update.stamp
-	$(ENV) JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_lite.data ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) $(ENV) JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_lite.data ./env/bin/python $(BENCH)
 	$(MAKE) perf_report
 perf_report:
 	perf report -i /tmp/perf_lite.data -n --objdump=../../pyston/tools/perf_jit.py
 
 perf_bench_baseline: env/update.stamp
-	DISABLE_PYSTON=1 JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_baseline.data ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) DISABLE_PYSTON=1 JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_baseline.data ./env/bin/python $(BENCH)
 	$(MAKE) perf_report_baseline
 perf_report_baseline:
 	perf report -i /tmp/perf_baseline.data -n --objdump=../../pyston/tools/perf_jit.py
 
 dbg_bench: env/update.stamp
-	DISABLE_PYSTONFULL=1 $(ENV) gdb --args ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) DISABLE_PYSTONFULL=1 $(ENV) gdb --args ./env/bin/python $(BENCH)
 
 
 bench_full:
