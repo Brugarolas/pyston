@@ -5,9 +5,10 @@ PYTHON:=python3.8
 DIR:=python3.8
 PYTHON_INCL:=/usr/include/$(DIR)/
 
-PYTHON:=/home/kmod/cpython_3.8/install/bin/python3
+PYTHON:=/home/kmod/cpython_3.8unoptshared/install/bin/python3
 DIR:=python3.8
-PYTHON_INCL:=/home/kmod/cpython_3.8/install/include/$(DIR)/
+PYTHON_INCL:=/home/kmod/cpython_3.8unoptshared/install/include/$(DIR)/
+PYTHON_LIBDIR:=/home/kmod/cpython_3.8unoptshared/install/lib/
 
 
 aot_ceval_jit.prep.c: aot_ceval_jit.c
@@ -20,11 +21,11 @@ CC:=gcc
 override CFLAGS += $(PY_CORE_CFLAGS) -I../../pyston/LuaJIT/ -Wno-address -Wpointer-to-int-cast -I$(PYTHON_INCL) -I$(PYTHON_INCL)/internal -DPYSTON_SPEEDUPS -DPy_BUILD_CORE -fPIC -Werror=implicit-function-declaration -g
 override CFLAGS += -pthread -c -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -Wall -DENABLE_AOT   -fstack-protector -specs=../tools/no-pie-compile.specs -D_FORTIFY_SOURCE=2 -fno-reorder-blocks-and-partition -std=c99 -Wextra -Wno-unused-result -Wno-unused-parameter -Wno-missing-field-initializers -Werror=implicit-function-declaration  -I../../Include/internal -IObjects -IInclude -IPython -I. -I../../Include   -I../aot  -DPy_BUILD_CORE -Wno-unused-label
 override CFLAGS += -std=gnu99 -fcf-protection=none
-override CFLAGS += -O3 -flto -ffat-lto-objects -flto-partition=none
+override CFLAGS += -O3 #-flto -ffat-lto-objects -flto-partition=none
 override CFLAGS += -DPYSTON_LITE
 
 # This file can't use lto due to the global registers:
-aot_ceval_jit_helper.o: CFLAGS+=-fno-lto
+# aot_ceval_jit_helper.o: CFLAGS+=-fno-lto
 
 pgo:
 	$(MAKE) buildclean
@@ -41,7 +42,8 @@ pgo:
 	$(MAKE) pyston_lite.so CFLAGS=-fprofile-use LDFLAGS=-fprofile-use
 
 pgo.stamp: $(wildcard *.c) $(wildcard *.h)
-	$(MAKE) pgo
+	# $(MAKE) pgo
+	$(MAKE) pyston_lite.so
 	touch $@
 
 pyston_lite.so: aot_ceval_jit.gen.o aot_ceval_jit_helper.o lib.o aot_ceval.o
@@ -105,37 +107,37 @@ testsuite: env
 	./env/bin/python -m test -j0 -x test_code
 
 bench: env/update.stamp
-	$(ENV) ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) $(ENV) flock /tmp ./env/bin/python $(BENCH)
 
 bench_baseline: env/update.stamp
-	DISABLE_PYSTON=1 ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) DISABLE_PYSTON=1 flock /tmp ./env/bin/python $(BENCH)
 
 perf_bench: env/update.stamp
-	$(ENV) JIT_PERF_MAP=1 perf record -o perf_lite.data ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) $(ENV) JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_lite.data ./env/bin/python $(BENCH)
 	$(MAKE) perf_report
 perf_report:
-	perf report -i perf_lite.data -n --objdump=../../pyston/tools/perf_jit.py
+	perf report -i /tmp/perf_lite.data -n --objdump=../../pyston/tools/perf_jit.py
 
 perf_bench_baseline: env/update.stamp
-	DISABLE_PYSTON=1 JIT_PERF_MAP=1 perf record -o perf_baseline.data ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) DISABLE_PYSTON=1 JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_baseline.data ./env/bin/python $(BENCH)
 	$(MAKE) perf_report_baseline
 perf_report_baseline:
-	perf report -i perf_baseline.data -n --objdump=../../pyston/tools/perf_jit.py
+	perf report -i /tmp/perf_baseline.data -n --objdump=../../pyston/tools/perf_jit.py
 
 dbg_bench: env/update.stamp
-	DISABLE_PYSTONFULL=1 $(ENV) gdb --args ./env/bin/python $(BENCH)
+	LD_LIBRARY_PATH=$(PYTHON_LIBDIR):$(LD_LIBRARY_PATH) DISABLE_PYSTONFULL=1 $(ENV) gdb --args ./env/bin/python $(BENCH)
 
 
 bench_full:
 	$(MAKE) -C ../.. build/unoptshared_env/update.stamp
-	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH ../../build/unoptshared_env/bin/python $(BENCH)
+	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH flock /tmp ../../build/unoptshared_env/bin/python $(BENCH)
 
 perf_bench_full:
 	$(MAKE) -C ../.. build/unoptshared_env/update.stamp
-	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH JIT_PERF_MAP=1 perf record -o perf_full.data ../../build/unoptshared_env/bin/python $(BENCH)
+	$(ENV) LD_LIBRARY_PATH=../../build/unoptshared_install/usr/lib:$$LD_LIBRARY_PATH JIT_PERF_MAP=1 flock /tmp perf record -o /tmp/perf_full.data ../../build/unoptshared_env/bin/python $(BENCH)
 	$(MAKE) perf_report_full
 perf_report_full:
-	perf report -i perf_full.data -n --objdump=../../pyston/tools/perf_jit.py
+	perf report -i /tmp/perf_full.data -n --objdump=../../pyston/tools/perf_jit.py
 
 dbg_bench_full:
 	$(MAKE) -C ../.. build/unoptshared_env/update.stamp
