@@ -12,13 +12,13 @@ Will try to identify the largest differences between the two perf reports
 from collections import defaultdict
 import subprocess
 
-baseline = defaultdict(int)
-lite = defaultdict(int)
-
 def parse(fn):
     r = defaultdict(int)
+    total = None
     for l in subprocess.check_output(["perf", "report", "-n", "-i", fn]).decode("utf8").split('\n'):
         if l.startswith("#"):
+            if "Event count" in l:
+                total = int(l.split()[-1])
             continue
         if '%' not in l:
             continue
@@ -26,33 +26,57 @@ def parse(fn):
         l = l.split()
         if '[k]' in l:
             l[-1] = "kernel"
-        r[l[-1]] = int(l[1])
+        # r[l[-1]] = int(l[1])
+        pct = float(l[0].rstrip("%"))
+        if pct == 0.0:
+            pct = 0.0025
+        r[l[-1]] = pct * total * 0.01
     return r
 
-baseline = parse("/tmp/perf_baseline.data")
-lite = parse("/tmp/perf_lite.data")
+def compare():
+    baseline = defaultdict(int)
+    lite = defaultdict(int)
 
-baseline_total = sum(baseline.values())
-lite_total = sum(lite.values())
+    baseline = parse("/tmp/perf_baseline.data")
+    lite = parse("/tmp/perf_lite.data")
 
-print("%d\t%d\t" % (baseline_total, lite_total), "%+.2f%%" % ((lite_total - baseline_total) / baseline_total * 100.0))
-print("="*40)
+    baseline_total = sum(baseline.values())
+    lite_total = sum(lite.values())
 
-for d in (lite, baseline):
-    for k, v in list(d.items()):
-        if "EvalFrame" in k:
-            d["_EvalFrame"] += d.pop(k)
+    print("%.1fB\t%.1fB\t" % (baseline_total * 1e-9, lite_total * 1e-9), "%+.2f%%" % ((lite_total - baseline_total) / baseline_total * 100.0))
+    print("="*40)
 
-all = set(baseline)
-all.update(lite)
+    for d in (lite, baseline):
+        for k, v in list(d.items()):
+            if "EvalFrame" in k:
+                d["_EvalFrame"] += d.pop(k)
 
-diffs = []
-for k in all:
-    diffs.append((abs(baseline.setdefault(k, 0) - lite.setdefault(k, 0)), k))
+    all = set(baseline)
+    all.update(lite)
 
-diffs.sort(reverse=True)
-for t in diffs[:10]:
-    k = t[-1]
-    f = baseline[k]
-    l = lite[k]
-    print("%d\t%d\t" % (f, l), "%+.2f%%" % ((l - f) / baseline_total * 100.0), k)
+    diffs = []
+    for k in all:
+        diffs.append((abs(baseline.setdefault(k, 0) - lite.setdefault(k, 0)), k))
+
+    diffs.sort(reverse=True)
+    for t in diffs[:10]:
+        k = t[-1]
+        f = baseline[k]
+        l = lite[k]
+        print("%4.1f%%\t% 4.1f%%\t" % (100.0 * f / baseline_total, 100.0 * l / lite_total), "%+.2f%%" % ((l - f) / baseline_total * 100.0), k)
+
+def showPercents():
+    baseline = parse("/tmp/perf_baseline.data")
+    lite = parse("/tmp/perf_lite.data")
+    baseline_total = sum(baseline.values())
+    lite_total = sum(lite.values())
+
+    l = list(lite.items())
+    l.sort(key=lambda p:-p[1])
+
+    for k, v in l[:20]:
+        print("%4.1f%%\t%s" % (100.0 * v / lite_total, k))
+
+if __name__ == "__main__":
+    # showPercents()
+    compare()
