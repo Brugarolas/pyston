@@ -5181,17 +5181,14 @@ _PyEval_EvalFrameDefault
 
     JitFunc jit_code = getJitCode(f->f_code);
 
-    int can_use_jit = 0;
-    if (jit_code != NULL && jit_code != JIT_FUNC_FAILED) {
-        // The jit assumes that globals and builtins are dicts so that it doesn't have to check them.
-        // It looks like they are not changeable for a given frame, so we only have to check once
-        // at the beginning, but they're not fixed for a code object so we can't just check at jit time.
-        // Also don't enter the jit if the throwflag is set which skips the main code path and goes to error path.
-        can_use_jit = PyDict_CheckExact(f->f_globals) && PyDict_CheckExact(f->f_builtins) && !throwflag;
-    }
+    // The jit assumes that globals and builtins are dicts so that it doesn't have to check them.
+    // It looks like they are not changeable for a given frame, so we only have to check once
+    // at the beginning, but they're not fixed for a code object so we can't just check at jit time.
+    // Also don't enter the jit if the throwflag is set which skips the main code path and goes to error path.
+    int can_use_jit = jit_code != JIT_FUNC_FAILED && PyDict_CheckExact(f->f_globals) && PyDict_CheckExact(f->f_builtins) && !throwflag;
 
-    if (can_use_jit) {
-        retval = _PyEval_EvalFrame_AOT_JIT(f, tstate, stack_pointer, jit_code);
+    if (jit_code != NULL && can_use_jit) {
+        return _PyEval_EvalFrame_AOT_JIT(f, tstate, stack_pointer, jit_code);
     } else {
         return _PyEval_EvalFrame_AOT_Interpreter(f, throwflag, tstate, stack_pointer, can_use_jit, 0);
     }
