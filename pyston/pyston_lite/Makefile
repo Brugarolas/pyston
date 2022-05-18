@@ -21,11 +21,11 @@ CC:=gcc
 override CFLAGS += $(PY_CORE_CFLAGS) -I../../pyston/LuaJIT/ -Wno-address -Wpointer-to-int-cast -I$(PYTHON_INCL) -I$(PYTHON_INCL)/internal -DPYSTON_SPEEDUPS -DPy_BUILD_CORE -fPIC -Werror=implicit-function-declaration -g
 override CFLAGS += -pthread -c -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -Wall -DENABLE_AOT   -fstack-protector -specs=../tools/no-pie-compile.specs -D_FORTIFY_SOURCE=2 -fno-reorder-blocks-and-partition -std=c99 -Wextra -Wno-unused-result -Wno-unused-parameter -Wno-missing-field-initializers -Werror=implicit-function-declaration  -I../../Include/internal -IObjects -IInclude -IPython -I. -I../../Include   -I../aot  -DPy_BUILD_CORE -Wno-unused-label
 override CFLAGS += -std=gnu99 -fcf-protection=none
-override CFLAGS += -O3 -flto -ffat-lto-objects -flto-partition=none
+override CFLAGS += -O3 #-flto -ffat-lto-objects -flto-partition=none
 override CFLAGS += -DPYSTON_LITE
 
 # This file can't use lto due to the global registers:
-aot_ceval_jit_helper.o: CFLAGS+=-fno-lto
+# aot_ceval_jit_helper.o: CFLAGS+=-fno-lto
 
 pgo:
 	$(MAKE) buildclean
@@ -42,7 +42,8 @@ pgo:
 	$(MAKE) pyston_lite.so CFLAGS=-fprofile-use LDFLAGS=-fprofile-use
 
 pgo.stamp: $(wildcard *.c) $(wildcard *.h)
-	$(MAKE) pgo
+	# $(MAKE) pgo
+	$(MAKE) pyston_lite.so
 	touch $@
 
 pyston_lite.so: aot_ceval_jit.gen.o aot_ceval_jit_helper.o lib.o aot_ceval.o
