@@ -990,15 +990,15 @@ int setItemInitSplitDictCache(PyObject** dictptr, PyObject* obj, PyObject* v, Py
 #endif
 
 int __attribute__((always_inline)) __attribute__((visibility("hidden")))
-storeAttrCache(PyObject* owner, PyObject* name, PyObject* v, _PyOpcache *co_opcache, int* err) {
+storeAttrCache(PyObject* owner, PyObject* name, PyObject* v, _PyOpcache *opcache_entry, int* err) {
 #ifdef PYSTON_LITE
     return -1;
 #else
-    _PyOpcache_StoreAttr *sa = &co_opcache->u.sa;
+    _PyOpcache_StoreAttr *sa = &opcache_entry->u.sa;
     PyTypeObject *tp = Py_TYPE(owner);
 
     // do we have a valid cache entry?
-    if (!co_opcache->optimized)
+    if (!opcache_entry->optimized)
         return -1;
 
     if (unlikely(sa->type_ver != tp->tp_version_tag))
@@ -1054,7 +1054,7 @@ storeAttrCache(PyObject* owner, PyObject* name, PyObject* v, _PyOpcache *co_opca
     }
 
 hit:
-    co_opcache->num_failed = 0;
+    opcache_entry->num_failed = 0;
 #if OPCACHE_STATS
     storeattr_hits++;
 #endif
@@ -1063,14 +1063,14 @@ hit:
 }
 
 int __attribute__((always_inline)) __attribute__((visibility("hidden")))
-setupStoreAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache) {
+setupStoreAttrCache(PyObject* obj, PyObject* name, _PyOpcache *opcache_entry) {
 #ifdef PYSTON_LITE
     return -1;
 #else
-    _PyOpcache_StoreAttr *sa = &co_opcache->u.sa;
+    _PyOpcache_StoreAttr *sa = &opcache_entry->u.sa;
     PyTypeObject *tp = Py_TYPE(obj);
 
-    if (co_opcache->num_failed >= 3)
+    if (opcache_entry->num_failed >= 3)
         return -1;
 
     if (!PyType_HasFeature(tp, Py_TPFLAGS_VALID_VERSION_TAG))
@@ -1113,10 +1113,10 @@ setupStoreAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache) {
 
 common_cached:
     if (tp->tp_dictoffset < SHRT_MIN || tp->tp_dictoffset > SHRT_MAX) {
-        co_opcache->optimized = 0; // we already modified the cache entry
+        opcache_entry->optimized = 0; // we already modified the cache entry
         return -1; // can't fit in our cache
     }
-    co_opcache->optimized = 1;
+    opcache_entry->optimized = 1;
     sa->type_tp_dictoffset = (short)tp->tp_dictoffset;
     sa->type_ver = tp->tp_version_tag;
     return 0;
@@ -1153,22 +1153,22 @@ int64_t _PyDict_GetItemOffset(PyDictObject *mp, PyObject *key, Py_ssize_t *dk_si
 PyObject* _PyDict_GetItemByOffset(PyDictObject *mp, PyObject *key, Py_ssize_t dk_size, int64_t offset);
 
 int __attribute__((visibility("hidden")))
-loadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *co_opcache, PyObject** res, int *meth_found) {
-    _PyOpcache_LoadAttr *la = &co_opcache->u.la;
+loadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *opcache_entry, PyObject** res, int *meth_found) {
+    _PyOpcache_LoadAttr *la = &opcache_entry->u.la;
 
     // do we have a valid cache entry?
-    if (!co_opcache->optimized)
+    if (!opcache_entry->optimized)
         return -1;
 
     if (la->cache_type == LA_CACHE_POLYMORPHIC) {
         // give up if we have not had a single cache hit after that many tries
-        if (co_opcache->num_failed >= 15) {
+        if (opcache_entry->num_failed >= 15) {
             return -1;
         }
         for (int i=0, num=la->u.poly_cache.num_used; i<num; ++i) {
             _PyOpcache* caches = la->u.poly_cache.caches;
             if (loadAttrCache(owner, name, &caches[i], res, meth_found) == 0) {
-                co_opcache->num_failed = 0;
+                opcache_entry->num_failed = 0;
                 return 0;
             }
         }
@@ -1259,7 +1259,7 @@ loadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *co_opcache, PyObject*
         abort();
     }
 
-    co_opcache->num_failed = 0;
+    opcache_entry->num_failed = 0;
 
 #if OPCACHE_STATS
     if (meth_found)
@@ -1270,7 +1270,7 @@ loadAttrCache(PyObject* owner, PyObject* name, _PyOpcache *co_opcache, PyObject*
     return 0;
 }
 
-static int createPolymorphicCache(_PyOpcache* co_opcache, _PyOpcache_LoadAttr *la) {
+static int createPolymorphicCache(_PyOpcache* opcache_entry, _PyOpcache_LoadAttr *la) {
     int num_entries = 5;
     _PyOpcache* caches = PyMem_Calloc(num_entries, sizeof(_PyOpcache));
     if (!caches)
@@ -1282,7 +1282,7 @@ static int createPolymorphicCache(_PyOpcache* co_opcache, _PyOpcache_LoadAttr *l
         caches[i].num_failed = 2;
     }
     // copy over the old entry as first entry of the polymorphic cache
-    memcpy(&caches[0], co_opcache, sizeof(_PyOpcache));
+    memcpy(&caches[0], opcache_entry, sizeof(_PyOpcache));
     la->cache_type = LA_CACHE_POLYMORPHIC;
     la->u.poly_cache.caches = caches;
     la->u.poly_cache.num_entries = num_entries;
@@ -1291,8 +1291,8 @@ static int createPolymorphicCache(_PyOpcache* co_opcache, _PyOpcache_LoadAttr *l
 }
 
 int __attribute__((visibility("hidden")))
-setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache, PyObject* res, int is_load_method, int inside_interpreter) {
-    _PyOpcache_LoadAttr *la = &co_opcache->u.la;
+setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *opcache_entry, PyObject* res, int is_load_method, int inside_interpreter) {
+    _PyOpcache_LoadAttr *la = &opcache_entry->u.la;
     int meth_found = 0;
     PyObject* descr = NULL;
     PyObject **dictptr = NULL, *dict = NULL;
@@ -1302,7 +1302,7 @@ setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache, PyObje
     if (!res)
         return -1;
 
-    if (co_opcache->num_failed >= 5)
+    if (opcache_entry->num_failed >= 5)
         return -1;
 
     if (!PyType_HasFeature(tp, Py_TPFLAGS_VALID_VERSION_TAG))
@@ -1327,7 +1327,7 @@ setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache, PyObje
     uint8_t tp_hash = (uint8_t)((uint64_t)(tp)>>4);
 
     // support for polymorphic caches
-    if (co_opcache->optimized &&
+    if (opcache_entry->optimized &&
         /* enter if we are already polymorphic */
         (la->cache_type == LA_CACHE_POLYMORPHIC ||
         /* or if the hash of the type is different we create a polymorphic IC */
@@ -1345,7 +1345,7 @@ setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache, PyObje
             } else {
                 // add a new entry
                 if (la->u.poly_cache.num_used >= la->u.poly_cache.num_entries) {
-                    co_opcache->num_failed = 10; // don't use the cache anymore we used all slots
+                    opcache_entry->num_failed = 10; // don't use the cache anymore we used all slots
                     return -1;
                 }
                 entry_idx = la->u.poly_cache.num_used++;
@@ -1355,12 +1355,12 @@ setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache, PyObje
             if (!inside_interpreter) {
                 return -1;
             }
-            if (createPolymorphicCache(co_opcache, la) == -1)
+            if (createPolymorphicCache(opcache_entry, la) == -1)
                 return -1;
             entry_idx = la->u.poly_cache.num_used++;
         }
-        co_opcache = &la->u.poly_cache.caches[entry_idx];
-        la = &co_opcache->u.la;
+        opcache_entry = &la->u.poly_cache.caches[entry_idx];
+        la = &opcache_entry->u.la;
     }
 
     descr = _PyType_Lookup(tp, name);
@@ -1431,7 +1431,7 @@ setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache, PyObje
                 // <0 means we did not find the attribute but this should never happen
                 assert(la->u.split_dict_cache.splitdict_index >= 0);
 #endif
-            } else if (co_opcache->num_failed >= 2) {
+            } else if (opcache_entry->num_failed >= 2) {
                 Py_ssize_t dk_size;
                 int64_t offset = _PyDict_GetItemOffset((PyDictObject*)dict, name, &dk_size);
                 if (offset < 0)
@@ -1494,10 +1494,10 @@ setupLoadAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache, PyObje
 
 common_cached:
     if (tp->tp_dictoffset < SHRT_MIN || tp->tp_dictoffset > SHRT_MAX) {
-        co_opcache->optimized = 0; // we already modified the cache entry
+        opcache_entry->optimized = 0; // we already modified the cache entry
         return -1; // can't fit in our cache
     }
-    co_opcache->optimized = 1;
+    opcache_entry->optimized = 1;
     la->type_tp_dictoffset = (short)tp->tp_dictoffset;
     la->meth_found = meth_found;
     if (la->cache_type != LA_CACHE_BUILTIN)
@@ -1666,7 +1666,7 @@ _PyEval_EvalFrame_AOT_Interpreter(PyFrameObject *f, int throwflag, PyThreadState
     const _Py_CODEUNIT *first_instr;
     PyObject *names;
     PyObject *consts;
-    //_PyOpcache *co_opcache; // Pyston change: use local variable instead
+    //_PyOpcache *opcache_entry; // Pyston change: use local variable instead
 
 #ifdef LLTRACE
     _Py_IDENTIFIER(__ltrace__);
@@ -1953,27 +1953,27 @@ _PyEval_EvalFrame_AOT_Interpreter(PyFrameObject *f, int throwflag, PyThreadState
         unsigned char co_opt_offset = \
             co->co_opcache_map[next_instr - first_instr]; \
         assert(co_opt_offset <= co->co_opcache_size); \
-        co_opcache = &co->co_opcache[co_opt_offset - 1]; \
-        assert(co_opcache != NULL); \
+        opcache_entry = &co->co_opcache[co_opt_offset - 1]; \
+        assert(opcache_entry != NULL); \
     } while (0)
 
 #define OPCACHE_CHECK() \
     do { \
-        co_opcache = NULL; \
+        opcache_entry = NULL; \
         if (opcache->oc_opcache != NULL) { \
             unsigned char co_opt_offset = \
                 opcache->oc_opcache_map[next_instr - first_instr]; \
             if (co_opt_offset > 0) { \
                 assert(co_opt_offset <= opcache->oc_opcache_size); \
-                co_opcache = &opcache->oc_opcache[co_opt_offset - 1]; \
-                assert(co_opcache != NULL); \
+                opcache_entry = &opcache->oc_opcache[co_opt_offset - 1]; \
+                assert(opcache_entry != NULL); \
             } \
         } \
     } while (0)
 
 #define OPCACHE_DISABLE() \
     do { \
-        co_opcache = NULL; \
+        opcache_entry = NULL; \
         if (co->co_opcache != NULL) { \
             co->co_opcache_map[next_instr - first_instr] = 0; \
         } \
@@ -2031,13 +2031,13 @@ _PyEval_EvalFrame_AOT_Interpreter(PyFrameObject *f, int throwflag, PyThreadState
 #define BINARY_OP_OPCACHE_PROF() \
     do { \
         if (Py_TYPE(left) == Py_TYPE(right)) { \
-            _PyOpcache *co_opcache; \
+            _PyOpcache *opcache_entry; \
             OPCACHE_CHECK(); \
-            if (co_opcache && co_opcache->optimized < 10) { \
-                co_opcache->u.t_refcnt.type = Py_TYPE(left); \
-                co_opcache->u.t_refcnt.refcnt1_left += (Py_REFCNT(left) == 1) ? 1 : 0; \
-                co_opcache->u.t_refcnt.refcnt1_right+= (Py_REFCNT(right) == 1) ? 1 : 0; \
-                ++co_opcache->optimized; \
+            if (opcache_entry && opcache_entry->optimized < 10) { \
+                opcache_entry->u.t_refcnt.type = Py_TYPE(left); \
+                opcache_entry->u.t_refcnt.refcnt1_left += (Py_REFCNT(left) == 1) ? 1 : 0; \
+                opcache_entry->u.t_refcnt.refcnt1_right+= (Py_REFCNT(right) == 1) ? 1 : 0; \
+                ++opcache_entry->optimized; \
             } \
         } \
     } while (0)
@@ -2567,12 +2567,12 @@ main_loop:
             PyObject *sub = POP();
             PyObject *container = TOP();
 
-            _PyOpcache *co_opcache;
-            co_opcache = NULL;
+            _PyOpcache *opcache_entry;
+            opcache_entry = NULL;
             //OPCACHE_CHECK();
-            if (co_opcache) {
-                co_opcache->u.t.type = Py_TYPE(container);
-                co_opcache->optimized = 1;
+            if (opcache_entry) {
+                opcache_entry->u.t.type = Py_TYPE(container);
+                opcache_entry->optimized = 1;
             }
 
             PyObject *res = PyObject_GetItem(container, sub);
@@ -2847,12 +2847,12 @@ main_loop:
             int err;
             STACK_SHRINK(3);
 
-            _PyOpcache *co_opcache;
-            co_opcache = NULL;
+            _PyOpcache *opcache_entry;
+            opcache_entry = NULL;
             //OPCACHE_CHECK();
-            if (co_opcache) {
-                co_opcache->u.t.type = Py_TYPE(container);
-                co_opcache->optimized = 1;
+            if (opcache_entry) {
+                opcache_entry->u.t.type = Py_TYPE(container);
+                opcache_entry->optimized = 1;
             }
 
             /* container[sub] = v */
@@ -3381,28 +3381,28 @@ main_loop:
             PyObject *v = SECOND();
             int err;
 
-            _PyOpcache *co_opcache;
-            co_opcache = NULL;
+            _PyOpcache *opcache_entry;
+            opcache_entry = NULL;
             //OPCACHE_CHECK();
-            if (USE_STORE_ATTR_CACHE && co_opcache && likely(v)) {
-                if (likely(storeAttrCache(owner, name, v, co_opcache, &err) == 0)) {
+            if (USE_STORE_ATTR_CACHE && opcache_entry && likely(v)) {
+                if (likely(storeAttrCache(owner, name, v, opcache_entry, &err) == 0)) {
                     STACK_SHRINK(2);
                     goto sa_common;
                 }
-                ++co_opcache->num_failed;
+                ++opcache_entry->num_failed;
             }
             STACK_SHRINK(2);
             err = PyObject_SetAttr(owner, name, v);
 
 #if OPCACHE_STATS
-            if (co_opcache)
+            if (opcache_entry)
                 storeattr_misses++;
             else
                 storeattr_noopcache++;
 #endif
 
-            if (USE_STORE_ATTR_CACHE && co_opcache && err == 0) {
-                setupStoreAttrCache(owner, name, co_opcache);
+            if (USE_STORE_ATTR_CACHE && opcache_entry && err == 0) {
+                setupStoreAttrCache(owner, name, opcache_entry);
             }
 
 sa_common:
@@ -3519,10 +3519,10 @@ sa_common:
             if (PyDict_CheckExact(f->f_globals)
                 && PyDict_CheckExact(f->f_builtins))
             {
-                _PyOpcache *co_opcache;
+                _PyOpcache *opcache_entry;
                 OPCACHE_CHECK();
-                if (co_opcache != NULL && co_opcache->optimized > 0) {
-                    _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
+                if (opcache_entry != NULL && opcache_entry->optimized > 0) {
+                    _PyOpcache_LoadGlobal *lg = &opcache_entry->u.lg;
 
                     if (lg->globals_ver ==
                             ((PyDictObject *)f->f_globals)->ma_version_tag
@@ -3532,7 +3532,7 @@ sa_common:
 #if OPCACHE_STATS
                         loadglobal_hits++;
 #endif
-                        co_opcache->num_failed = 0;
+                        opcache_entry->num_failed = 0;
                         PyObject *ptr = lg->ptr;
                         OPCACHE_STAT_GLOBAL_HIT();
                         assert(ptr != NULL);
@@ -3543,7 +3543,7 @@ sa_common:
 #if OPCACHE_STATS
                     loadglobal_misses++;
 #endif
-                    co_opcache->num_failed++;
+                    opcache_entry->num_failed++;
                 }
 #if OPCACHE_STATS
                 else
@@ -3565,17 +3565,17 @@ sa_common:
                     goto error;
                 }
 
-                if (co_opcache != NULL) {
-                    _PyOpcache_LoadGlobal *lg = &co_opcache->u.lg;
+                if (opcache_entry != NULL) {
+                    _PyOpcache_LoadGlobal *lg = &opcache_entry->u.lg;
 
-                    if (co_opcache->optimized == 0) {
+                    if (opcache_entry->optimized == 0) {
                         /* Wasn't optimized before. */
                         OPCACHE_STAT_GLOBAL_OPT();
                     } else {
                         OPCACHE_STAT_GLOBAL_MISS();
                     }
 
-                    co_opcache->optimized = 1;
+                    opcache_entry->optimized = 1;
                     lg->globals_ver =
                         ((PyDictObject *)f->f_globals)->ma_version_tag;
                     if (wasglobal)
@@ -4021,27 +4021,27 @@ sa_common:
             PyObject *owner = TOP();
             PyObject *res;
 
-            _PyOpcache *co_opcache;
-            co_opcache = NULL;
+            _PyOpcache *opcache_entry;
+            opcache_entry = NULL;
             //OPCACHE_CHECK();
-            if (USE_LOAD_ATTR_CACHE && co_opcache) {
-                if (likely(loadAttrCache(owner, name, co_opcache, &res, NULL) == 0))
+            if (USE_LOAD_ATTR_CACHE && opcache_entry) {
+                if (likely(loadAttrCache(owner, name, opcache_entry, &res, NULL) == 0))
                     goto la_common;
-                ++co_opcache->num_failed;
+                ++opcache_entry->num_failed;
             }
 
 
             res = PyObject_GetAttr(owner, name);
 
 #if OPCACHE_STATS
-            if (co_opcache)
+            if (opcache_entry)
                 loadattr_misses++;
             else
                 loadattr_noopcache++;
 #endif
 
-            if (USE_LOAD_ATTR_CACHE && co_opcache && res) {
-                setupLoadAttrCache(owner, name, co_opcache, res, 0 /*= not LOAD_METHOD*/, 1 /*inside interpreter*/);
+            if (USE_LOAD_ATTR_CACHE && opcache_entry && res) {
+                setupLoadAttrCache(owner, name, opcache_entry, res, 0 /*= not LOAD_METHOD*/, 1 /*inside interpreter*/);
             }
 la_common:
             Py_DECREF(owner);
@@ -4496,13 +4496,13 @@ la_common:
             PyObject *obj = TOP();
             PyObject *meth = NULL;
 
-            _PyOpcache *co_opcache;
-            co_opcache = NULL;
+            _PyOpcache *opcache_entry;
+            opcache_entry = NULL;
             //OPCACHE_CHECK();
 
             int is_method;
-            if (USE_LOAD_METHOD_CACHE && co_opcache) {
-                if (likely(loadAttrCache(obj, name, co_opcache, &meth, &is_method) == 0)) {
+            if (USE_LOAD_METHOD_CACHE && opcache_entry) {
+                if (likely(loadAttrCache(obj, name, opcache_entry, &meth, &is_method) == 0)) {
                     if (meth == NULL) {
                         goto error;
                     }
@@ -4516,14 +4516,14 @@ la_common:
                     }
                     goto lm_before_dispatch;
                 }
-                ++co_opcache->num_failed;
+                ++opcache_entry->num_failed;
             }
             meth = NULL;
 
             int meth_found = _PyObject_GetMethod(obj, name, &meth);
 
 #if OPCACHE_STATS
-            if (co_opcache)
+            if (opcache_entry)
                 loadmethod_misses++;
             else
                 loadmethod_noopcache++;
@@ -4534,8 +4534,8 @@ la_common:
                 goto error;
             }
 
-            if (USE_LOAD_METHOD_CACHE && co_opcache) {
-                setupLoadAttrCache(obj, name, co_opcache, meth, 1 /*= LOAD_METHOD*/, 1 /*inside interpreter*/);
+            if (USE_LOAD_METHOD_CACHE && opcache_entry) {
+                setupLoadAttrCache(obj, name, opcache_entry, meth, 1 /*= LOAD_METHOD*/, 1 /*inside interpreter*/);
             }
 
             if (meth_found) {
