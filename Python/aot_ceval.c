@@ -2332,7 +2332,7 @@ main_loop:
             PyObject *right = POP();
             PyObject *left = TOP();
 
-            BINARY_OP_OPCACHE_PROF();
+            //BINARY_OP_OPCACHE_PROF();
 
             PyObject *res = PyNumber_Multiply(left, right);
             Py_DECREF(left);
@@ -2404,7 +2404,7 @@ main_loop:
             PyObject *left = TOP();
             PyObject *sum;
 
-            BINARY_OP_OPCACHE_PROF();
+            //BINARY_OP_OPCACHE_PROF();
 
             /* NOTE(haypo): Please don't try to micro-optimize int+int on
                CPython using bytecode, it is simply worthless.
@@ -2432,7 +2432,7 @@ main_loop:
             PyObject *right = POP();
             PyObject *left = TOP();
 
-            BINARY_OP_OPCACHE_PROF();
+            //BINARY_OP_OPCACHE_PROF();
 
             PyObject *diff = PyNumber_Subtract(left, right);
             Py_DECREF(right);
@@ -2448,7 +2448,8 @@ main_loop:
             PyObject *container = TOP();
 
             _PyOpcache *co_opcache;
-            OPCACHE_CHECK();
+            co_opcache = NULL;
+            //OPCACHE_CHECK();
             if (co_opcache) {
                 co_opcache->u.t.type = Py_TYPE(container);
                 co_opcache->optimized = 1;
@@ -2563,7 +2564,7 @@ main_loop:
             PyObject *right = POP();
             PyObject *left = TOP();
 
-            BINARY_OP_OPCACHE_PROF();
+            //BINARY_OP_OPCACHE_PROF();
 
             PyObject *res = PyNumber_InPlaceMultiply(left, right);
             Py_DECREF(left);
@@ -2627,7 +2628,7 @@ main_loop:
             PyObject *left = TOP();
             PyObject *sum;
 
-            BINARY_OP_OPCACHE_PROF();
+            //BINARY_OP_OPCACHE_PROF();
 
             if (PyUnicode_CheckExact(left) && PyUnicode_CheckExact(right)) {
                 sum = unicode_concatenate(tstate, left, right, f, next_instr);
@@ -2648,7 +2649,7 @@ main_loop:
             PyObject *right = POP();
             PyObject *left = TOP();
 
-            BINARY_OP_OPCACHE_PROF();
+            //BINARY_OP_OPCACHE_PROF();
 
             PyObject *diff = PyNumber_InPlaceSubtract(left, right);
             Py_DECREF(left);
@@ -2727,7 +2728,8 @@ main_loop:
             STACK_SHRINK(3);
 
             _PyOpcache *co_opcache;
-            OPCACHE_CHECK();
+            co_opcache = NULL;
+            //OPCACHE_CHECK();
             if (co_opcache) {
                 co_opcache->u.t.type = Py_TYPE(container);
                 co_opcache->optimized = 1;
@@ -3260,7 +3262,8 @@ main_loop:
             int err;
 
             _PyOpcache *co_opcache;
-            OPCACHE_CHECK();
+            co_opcache = NULL;
+            //OPCACHE_CHECK();
             if (USE_STORE_ATTR_CACHE && co_opcache && likely(v)) {
                 if (likely(storeAttrCache(owner, name, v, co_opcache, &err) == 0)) {
                     STACK_SHRINK(2);
@@ -3899,7 +3902,8 @@ sa_common:
             PyObject *res;
 
             _PyOpcache *co_opcache;
-            OPCACHE_CHECK();
+            co_opcache = NULL;
+            //OPCACHE_CHECK();
             if (USE_LOAD_ATTR_CACHE && co_opcache) {
                 if (likely(loadAttrCache(owner, name, co_opcache, &res, NULL) == 0))
                     goto la_common;
@@ -4373,7 +4377,8 @@ la_common:
             PyObject *meth = NULL;
 
             _PyOpcache *co_opcache;
-            OPCACHE_CHECK();
+            co_opcache = NULL;
+            //OPCACHE_CHECK();
 
             int is_method;
             if (USE_LOAD_METHOD_CACHE && co_opcache) {
