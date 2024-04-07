@@ -13,6 +13,11 @@
 //   - 2 means jump to exception_unwind
 // - opcodes using JUMPTO and JUMPBY need special handling in the JIT
 
+#ifndef _WIN32
+#include <sys/types.h>
+#endif
+
+#include "../../Include/pyport.h"
 #include "../../Python/aot_ceval_includes.h"
 
 #include <ctype.h>

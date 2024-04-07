@@ -6,7 +6,13 @@
    XXX document it!
    */
 
+#ifndef _WIN32
+#include <sys/types.h>
+#endif
+
+#include "../../Include/pyport.h"
 #include "../../Python/aot_ceval_includes.h"
+#include "../../Include/exports.h"
 
 #include <ctype.h>
 
@@ -203,7 +209,7 @@ long loadglobal_hits = 0, loadglobal_misses = 0, loadglobal_uncached = 0, loadgl
 #if PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION <= 8
 // In pyston-full we rely on LTO to inline cmp_outcome into the interpreter loop.
 // In pyston-lite we have to make the implementation available
-Py_LOCAL_SYMBOL inline PyObject* cmp_outcome(PyThreadState *tstate, int, PyObject *v, PyObject *w);
+inline Py_LOCAL_SYMBOL PyObject* cmp_outcome(PyThreadState *tstate, int, PyObject *v, PyObject *w);
 PyObject* cmp_outcomePyCmp_LT(PyObject *v, PyObject *w) {
   return cmp_outcome(NULL, PyCmp_LT, v, w);
 }
@@ -1630,6 +1636,9 @@ static uint64_t getDictVersionFromDictPtr(PyObject** dictptr) {
 #define TYPE_VERSION_CHECK(tp, type_ver)  ((tp)->tp_version_tag == (type_ver))
 #endif
 
+#include "../../Include/pyport.h"
+#include "../../Include/exports.h"
+
 #ifndef NO_DKVERSION
 static uint64_t getSplitDictKeysVersionFromDictPtr(PyObject** dictptr) {
     if (dictptr == NULL)
@@ -1662,8 +1671,7 @@ int setItemInitSplitDictCache(PyObject** dictptr, PyObject* obj, PyObject* v, Py
     return err;
 }
 
-int Py_ALWAYS_INLINE Py_LOCAL_SYMBOL
-storeAttrCache(PyObject* owner, PyObject* name, PyObject* v, _PyOpcache *co_opcache, int* err) {
+Py_LOCAL_SYMBOL Py_ALWAYS_INLINE int storeAttrCache(PyObject* owner, PyObject* name, PyObject* v, _PyOpcache *co_opcache, int* err) {
     _PyOpcache_StoreAttr *sa = &co_opcache->u.sa;
     PyTypeObject *tp = Py_TYPE(owner);
 
@@ -1742,8 +1750,7 @@ hit:
     return 0;
 }
 
-int Py_ALWAYS_INLINE Py_LOCAL_SYMBOL
-setupStoreAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache) {
+Py_ALWAYS_INLINE Py_LOCAL_SYMBOL int setupStoreAttrCache(PyObject* obj, PyObject* name, _PyOpcache *co_opcache) {
     _PyOpcache_StoreAttr *sa = &co_opcache->u.sa;
     PyTypeObject *tp = Py_TYPE(obj);
 
